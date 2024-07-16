@@ -4,6 +4,7 @@ from numpy import ndarray
 from sentence_transformers import util
 
 from ranker import Ranker
+from ranker import DistScorer #TODO: import DistScorer
 
 CACHE_PATH = './__cache__/'
 DATA_PATH = './data/'
@@ -26,12 +27,17 @@ class VectorRanker(Ranker):
 
         Using zip(encoded_docs, row_to_docid) should give you the mapping between the docid and the embedding.
         """
+        self.__init__(index=index, ranker=ranker, scorer=None, stations_path=stations_path, users_path=users_path)
+
+    def __init__(self, index, ranker, scorer, stations_path=str, users_path=str) -> None:
         self.name = 'VectorRanker'
         self.index = index
         self.encode_docs(stations_path, users_path)
         self.ranker = ranker
+        self.scorer = scorer
 
     def encode_docs(self, docs_path: str, users_path: str):
+
         encoded_docs = pd.read_csv(docs_path)
         user_profile = pd.read_csv(users_path)
         self.row_to_docid = encoded_docs['docid'].to_list()
@@ -43,10 +49,27 @@ class VectorRanker(Ranker):
         #     for element in row_to_docid:
         #         file.write(str(element) + '\n')
 
+        encoded_docs = encoded_docs.drop(columns='docid',
+                                         axis=1) #TODO: drop first column of encoded_docs and user_profile
+        user_profile = user_profile.drop(user_profile.columns[[0]],
+                                         axis=1)  # TODO: drop first column of encoded_docs and user_profile
         self.encoded_docs = encoded_docs.to_numpy()
         # np.save(CACHE_PATH + 'encoded_stations.npy', encoded_docs)
         user_profile = user_profile.to_numpy()
-        self.user_profile = np.concatenate((user_profile, -1 * user_profile), axis=1)
+        self.user_profile = np.concatenate((user_profile, -1 * user_profile), axis=1) #TODO: look at the concatenation
+
+        #print("User Profiles:")
+        #for row in self.user_profile:
+        #    print(row)
+        #print(self.user_profile.shape)
+
+        new_list = []
+        for i in range(len(self.user_profile)):
+            new_list.append(0)
+        lst = np.array(new_list)
+        print(lst.shape)
+        self.user_profile = np.column_stack((self.user_profile, lst))
+        print(self.user_profile.shape)
         # np.save(CACHE_PATH + 'encoded_user_profile.npy', encoded_user_profile)
 
     def personalized_re_rank(self, result: list[int] | list[tuple[int, float]], user_id: int = None) -> list[int] | list[tuple[int, float]]:
@@ -70,6 +93,7 @@ class VectorRanker(Ranker):
             pre_ranker_result = result.copy()
 
         user_vec = self.user_profile[self.profile_row_to_userid.index(user_id)]
+        #print(user_id, user_vec) #TODO: added
         encoded_len = len(self.encoded_docs[0])
 
         doc_vecs = []
@@ -80,12 +104,23 @@ class VectorRanker(Ranker):
             else:
                 doc_vecs.append(np.zeros(encoded_len))
 
-        scores = np.dot(doc_vecs, user_vec)
+        print("user_vec", user_vec, sep=" ")
+        scores = []
+        for d in doc_vecs:
+            if np.dot(d, d) == 0 or np.dot(user_vec, user_vec) == 0:
+                scores.append(0.0)
+                continue
+            scores.append(np.dot(d, user_vec)/(np.linalg.norm(d) * np.linalg.norm(user_vec)))
+        #scores = np.dot(doc_vecs, user_vec) #TODO: testing out cosine similarity
         sorted_idx = np.argsort(scores)[::-1]
+        sorted_scores = np.sort(scores)[::-1]
+        print(sorted_idx) #TODO: this prints out all of the sorted_idx
+        print("sorted dot prods ", end="")  # TODO: this prints out all of the scores
+        print(sorted_scores)
 
         return_list = result.copy()
         for i in range(len(sorted_idx)):
-            return_list[i] = [pre_ranker_result[sorted_idx[i]], 0]
+            return_list[i] = [pre_ranker_result[sorted_idx[i]], 0, sorted_scores[i]] #TODO: return scores as well
         return return_list
 
     def query(self, query: str, radius: float = 0.03, user_id: int = None, threshold: int = 100) -> list[tuple[int, float]]:

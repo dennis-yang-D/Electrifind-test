@@ -6,7 +6,7 @@ from flask import current_app, g
 
 from src.utils import DATA_PATH
 
-NREL_PATH = DATA_PATH + "NREL_raw.csv"
+NREL_PATH = DATA_PATH + "old_NREL/NREL_raw.csv" #TODO: changed this
 
 
 def get_db():
@@ -44,8 +44,8 @@ def init_db():
         columns = next(reader)
         for row in reader:
             row = [mod_item(item) for item in row]
-            db.execute(f'INSERT INTO nrel (' + ', '.join(columns) +
-                       ') VALUES (' + ', '.join(row) + ')')
+            #print('INSERT INTO nrel (' + ', '.join(columns) + ')')
+            db.execute('INSERT INTO nrel (' + ', '.join(columns) + ')' + 'VALUES (' + ', '.join(row) + ')')
 
 
 @click.command('init-db')

@@ -1,0 +1,10 @@
+These are three test files to test out the vector/cosine similarity rankers: TEST_station_personalized_features.csv, TEST_user_profile.csv, and TEST_NREL_map.csv
+TEST_station_personalized_features_FULL_VEC.csv is the same as TEST_station_personalized_features.csv but with all components
+
+Our default lat/lng is 42.27182532779447, -83.75656446990327
+
+TEST_NREL_map.csv: contains docid, lat, lng. Supposed to be generated from NREL_numerical and NREL_raw in NREL_processing.py and utils.py
+TEST_station_personalized_features.csv: contains docid and vector components
+TEST_user_profile.csv: contains userid and vector components
+
+Stations: each test station is associated with a docid (numbered -1 to -20, so 20 test stations). Given our default lat/lng, all stations have -83.71 as their longitude. -1 to -10 have 42.301 lat, -11 to -20 have 42.261 lat

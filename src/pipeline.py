@@ -4,7 +4,11 @@ This file is a template code file for the Search Engine.
 '''
 import sys
 import os
+from typing import List, Any, Tuple
+
 import pandas as pd
+
+from src.models import SearchResponse
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -17,10 +21,10 @@ from document_preprocessor import *
 from models import BaseSearchEngine, SearchResponse
 from utils import CACHE_PATH, DATA_PATH
 
-NREL_PATH = DATA_PATH + 'NREL_raw.csv'
-REVIEW_PATH = DATA_PATH + 'Google_Map_review_data_AA_DTW.csv'
-NREL_CORPUS_PATH = DATA_PATH + 'NREL_corpus.jsonl'
-NREL_NUMERICAL_PATH = DATA_PATH + 'NREL_numerical.csv'
+NREL_PATH = DATA_PATH + 'old_NREL/NREL_raw.csv'
+REVIEW_PATH = DATA_PATH + 'old_NREL/Google_Map_review_data.csv' #TODO: see if can generate just san fran reviews
+NREL_CORPUS_PATH = DATA_PATH + 'old_NREL/NREL_corpus.jsonl'
+NREL_NUMERICAL_PATH = DATA_PATH + 'old_NREL/NREL_numerical.csv'
 STOPWORDS_PATH = DATA_PATH + 'stopwords.txt'
 DOC_IDS_PATH = DATA_PATH + 'document-ids.txt'
 SEARCH_RADIUS = 0.03
@@ -28,6 +32,10 @@ DEFAULT_LAT = "42.30136771768067"
 DEFAULT_LNG = "-83.71907280246434"
 DEFAULT_USER = 2
 DEFAULT_PROMPT = None
+
+#TODO: look at these new variables
+STATION_PATH = 'old_NREL/station_personalized_features.csv'
+USER_PATH = 'old_NREL/user_profile.csv'
 
 
 class SearchEngine(BaseSearchEngine):
@@ -100,11 +108,13 @@ class SearchEngine(BaseSearchEngine):
             self.reranker = 'l2r'
         elif reranker == 'vector+cf':
             print('Loading vector ranker...')
+            scorer_new = DistScorer(self.frame)
             self.ranker = VectorRanker(
                 index=self.frame,
                 ranker=self.ranker,
-                stations_path=DATA_PATH + 'station_personalized_features.csv',
-                users_path=DATA_PATH + 'user_profile.csv'
+                scorer=scorer_new,
+                stations_path=DATA_PATH + STATION_PATH,
+                users_path=DATA_PATH + USER_PATH
             )
             self.reranker = 'vector+cf'
             print('Loading cf ranker...')
@@ -114,22 +124,24 @@ class SearchEngine(BaseSearchEngine):
             self.pipeline = VectorRanker(
                 index=self.frame,
                 ranker=self.ranker,
-                stations_path=DATA_PATH + 'station_personalized_features.csv',
-                users_path=DATA_PATH + 'user_profile.csv'
+                scorer=None,
+                stations_path=DATA_PATH + STATION_PATH,
+                users_path=DATA_PATH + USER_PATH
             )
             self.reranker = 'vector'
+            print("User profile ", self.pipeline.user_profile) #TODO: added print here
         else:
             self.reranker = None
             self.pipeline.ranker = self.ranker
 
-    def search(self, query: str, **kwargs) -> list[SearchResponse]:
+    def search(self, query: str, **kwargs) -> list[Any] | tuple[list[SearchResponse], list[tuple[int, float]]]: #TODO: changing return types
         # 1. Use the ranker object to query the search pipeline
         # 2. This is example code and may not be correct.
         results = self.pipeline.query(query, **kwargs)
         if results is None or results == []:
             print('No results found')
-            return []
-        return [SearchResponse(id=idx+1, docid=result[0], score=result[1]) for idx, result in enumerate(results)]
+            return [], []
+        return [SearchResponse(id=idx+1, docid=result[0], score=result[1]) for idx, result in enumerate(results)], results
 
     def get_results_all(self, lat, lng, prompt, user_id, radius=0.03, top_n=10):
         query = str(lat) + ", " + str(lng)
@@ -139,7 +151,13 @@ class SearchEngine(BaseSearchEngine):
             "user_id": user_id,
             "radius": radius
         }
-        results = self.search(query, **param)
+        results, res = self.search(query, **param)
+        print(res) #TODO: print results
+        ret = []
+        for i in range(len(results)):
+            ret.append([results[i].docid, res[i][2]])
+        if self.reranker == 'vector':
+            return ret
         return [r.docid for r in results]
 
     def get_station_info(self, docid_list, all=False):
@@ -148,14 +166,18 @@ class SearchEngine(BaseSearchEngine):
         self.review_data = pd.read_csv(REVIEW_PATH, low_memory=False)
         if not all:
             res = []
-            for docid in docid_list:
+            for docid1 in docid_list:
+                if self.reranker == 'vector':
+                    docid = docid1[0]
+                else:
+                    docid = docid1
                 row = self.detailed_data[self.detailed_data['id'] == docid]
                 if row.empty:
                     continue
                 mask = (abs(row['latitude'].values[0] - self.review_data.lat) <
-                        0.001) & (abs(row['longitude'].values[0] - self.review_data.lng) < 0.001)
+                        0.002) & (abs(row['longitude'].values[0] - self.review_data.lng) < 0.002)
                 reviews_data = self.review_data[mask]
-                if reviews_data.empty:
+                if reviews_data.empty: #TODO: consider making reviews empty or not
                     continue
                 reviews = []
                 for index, line in reviews_data.iterrows():
@@ -175,8 +197,10 @@ class SearchEngine(BaseSearchEngine):
                     'ev_pricing': row['ev_pricing'].values[0],
                     'access_days_time': row['access_days_time'].values[0],
                     'cards_accepted': row['cards_accepted'].values[0],
-                    'reviews': reviews
+                    'scores': docid1[1],
+                    'reviews': reviews #TODO: reviews
                 })
+                print(row['station_name'], docid) #TODO: print station names
             return res
         else:
             return self.detailed_data[self.detailed_data['ID'].isin(docid_list)][[

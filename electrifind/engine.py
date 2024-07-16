@@ -9,12 +9,12 @@ from tqdm import tqdm
 from src.pipeline import SearchEngine
 
 DATA_PATH = "./data/"
-NREL_PATH = DATA_PATH + "NREL_raw.csv"
+NREL_PATH = DATA_PATH + "test_NREL/NREL_raw.csv"
 DEFAULT_LAT = 42.30136771768067
 DEFAULT_LNG = -83.71907280246434
 DEFAULT_USER = -1
 DEFAULT_PROMPT = None
-RADIUS_DICT = {'small': 0.01, 'med': 0.03, 'large': 0.05}
+RADIUS_DICT = {'small': 0.01, 'med': 0.03, 'large': 0.05} #TODO: change these values
 
 bp = Blueprint('engine', __name__)
 engine = SearchEngine()
@@ -71,13 +71,15 @@ def search():
         else:
             error = 'Invalid radius parameter.'
 
+        res_details = [] #ADDED this line to avoid return error
         if error is not None:
             flash(error)
         else:
             result = engine.get_results_all(
                 lat, lng, prompt, int(user_id), radius)
             if result:
-                # print(result)
+                print("Result: ")
+                #print(result)
                 res_details = engine.get_station_info(result)
                 marker_t = {
                     "icon": icons.dots.blue,
@@ -100,6 +102,7 @@ def search():
                     style="height:40vmax;width:80vmax;margin:50px;",
                 )
             else:
+                print("No Result")
                 res_details = []
                 gmap = Map(
                     identifier="gmap",
@@ -124,6 +127,8 @@ def search():
             lng=lng,
             style="height:40vmax;width:80vmax;margin:50px;",
         )
+
+    #TODO: print(res_details) ##ADDED
     return render_template(
         'engine/index.html',
         lat=lat,

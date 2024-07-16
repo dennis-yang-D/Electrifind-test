@@ -4,7 +4,10 @@ from tqdm import tqdm
 
 from ranker import *
 from utils import DATA_PATH, CACHE_PATH
+import l2r
 
+NUMERICAL_PATH = "old_NREL/NREL_numerical.csv"
+REVIEW_PATH = "Google_Map_review_data_AA_DTW.csv"
 
 class CFRanker:
     def __init__(self, index, ranker: Ranker) -> None:
@@ -28,12 +31,13 @@ class CFRanker:
         self.name = 'CFRanker'
         self.get_scores()
         self.get_similarities()
+        self.feature_extractor = l2r.L2RFeatureExtractor()
 
     def get_scores(self):
         dataset_df = pd.read_csv(
-            DATA_PATH + 'Google_Map_review_data_AA_DTW.csv', sep=',', header=0)
+            DATA_PATH + REVIEW_PATH, sep=',', header=0)
         sample_df = pd.read_csv(
-            DATA_PATH + 'NREL_numerical.csv', sep=',', header=0, low_memory=False)
+            DATA_PATH + NUMERICAL_PATH, sep=',', header=0, low_memory=False)
         authors_list = dataset_df.author_name.unique()
         stations_list = []
         coor_list = set()
@@ -48,6 +52,7 @@ class CFRanker:
                     stations_list.append(row.name)
         self.score_index = pd.DataFrame(
             index=stations_list, columns=authors_list)
+        #print(self.score_index) #TODO: print this
         for row in dataset_df.itertuples():
             self.score_index.loc[row.name, row.author_name] = row.rating
         self.score_index.reset_index(drop=True, inplace=True)
@@ -122,8 +127,9 @@ class CFRanker:
         if len(relevant_docs) == 0:
             return []
 
+        print(type(self.ranker.scorer)) #TODO: print ranker type
         relevant_docs['score'] = relevant_docs.apply(
-            lambda x: self.ranker.scorer.score([x.Latitude, x.Longitude], query_parts), axis=1)
+            lambda x: self.ranker.scorer.score([x.Latitude, x.Longitude], query_parts), axis=1) #TODO: changed ranker type
         relevant_docs = relevant_docs.sort_values(
             by=['score'], ascending=False)
         relevant_docs['id'] = relevant_docs.index
@@ -136,7 +142,7 @@ class CFRanker:
             X_pred = []
             for item in results_top_100:
                 docid = int(item[0])
-                if self.ranker.ranker.scorer.__class__.__name__ == 'DistScorer':
+                if self.ranker.scorer.__class__.__name__ == 'DistScorer':
                     X_pred.append(self.ranker.feature_extractor.generate_features(
                         docid, query_parts))
                 else:
